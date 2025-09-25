@@ -9,12 +9,6 @@
 Asynchronous Python client for [NS.Gifts API](https://api.ns.gifts/docs).  
 ❗ I do not collaborate and am not affiliated with [NS.Gifts](https://wholesale.ns.gifts/). This client is written solely for convenience when working with the API.
 
-### 🚀 Installation
-
-```bash
-pip install nsgifts
-```
-
 ### 📌 Quick Start
 
 ```python
@@ -188,16 +182,6 @@ async def robust_example():
 
 Асинхронный Python-клиент для [NS.Gifts API](https://api.ns.gifts/docs).  
 ❗ Я не сотрудничаю и никак не связан с [NS.Gifts](https://wholesale.ns.gifts/). Этот клиент написан исключительно для удобства работы с API.
-
----
-
-## 🚀 Установка
-
-```bash
-pip install nsgifts
-```
-
----
 
 ## 📌 Быстрый старт
 
