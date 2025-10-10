@@ -170,7 +170,6 @@ async def robust_example():
 - The author **is not responsible** for any problems, losses, or damages arising from the use of this library.
 - The library may stop working at any time due to changes in the NS.Gifts API.
 - This library is provided "AS IS", without any warranties, express or implied.
-- Use at your own risk.
 
 ### 📜 License
 
@@ -349,7 +348,6 @@ async def robust_example():
 - Автор **не несет ответственности** за любые проблемы, убытки или ущерб, возникшие в результате использования данной библиотеки.
 - Библиотека может перестать работать в любой момент из-за изменений в API NS.Gifts.
 - Данная библиотека предоставляется "КАК ЕСТЬ", без каких-либо гарантий, явных или подразумеваемых.
-- Используйте на свой страх и риск.
 
 ---
 
