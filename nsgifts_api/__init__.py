@@ -1,6 +1,6 @@
 """NS Gifts API Client.
 
-Simple Python client for NS Gifts API operations..
+Simple Python client for NS Gifts API operations.
 """
 
 from .client import NSGiftsClient
