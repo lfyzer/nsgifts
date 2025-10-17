@@ -15,7 +15,7 @@ Usage:
 """
 
 from .common import IPWhitelistRequest, PayOrder
-from .orders import CreateOrder, NewOrderDetailsResponseModelBasic
+from .orders import CreateOrder
 from .services import CategoryRequest
 from .steam import (
     SteamGiftOrder,
@@ -33,9 +33,9 @@ __all__ = [
     "UserSignupSchema",
     "UserSchema",
     # Service models
-    "CategoryRequest"
+    "CategoryRequest",
     # Order models
-    "CreateOrder"
+    "CreateOrder",
     # Steam models
     "SteamRubCalculate",
     "SteamGiftOrderCalculate", 
