@@ -2,16 +2,16 @@
 
 from typing import Any, Dict, List, Optional, Union
 
+from ..enums import Region
 from ..models import (
     PayOrder,
-    Region,
     SteamGiftOrder,
     SteamGiftOrderCalculate, 
     SteamRubCalculate,
 )
 
 
-class SteamEndpoints:
+class SteamMethods:
     """Steam operations like sending gifts and checking prices."""
     
     BASE_PATH_STEAM = "/api/v1/steam"
@@ -26,17 +26,17 @@ class SteamEndpoints:
         """
         return {
             "calculate_steam_amount":
-                f"{SteamEndpoints.BASE_PATH_STEAM}/get_amount",
+                f"{SteamMethods.BASE_PATH_STEAM}/get_amount",
             "get_steam_currency_rate":
-                f"{SteamEndpoints.BASE_PATH_STEAM}/get_currency_rate",
+                f"{SteamMethods.BASE_PATH_STEAM}/get_currency_rate",
             "calculate_steam_gift":
-                f"{SteamEndpoints.BASE_PATH_GIFT}/calculate",
+                f"{SteamMethods.BASE_PATH_GIFT}/calculate",
             "create_steam_gift_order":
-                f"{SteamEndpoints.BASE_PATH_GIFT}/create_order",
+                f"{SteamMethods.BASE_PATH_GIFT}/create_order",
             "pay_steam_gift_order":
-                f"{SteamEndpoints.BASE_PATH_GIFT}/pay_order",
+                f"{SteamMethods.BASE_PATH_GIFT}/pay_order",
             "get_steam_apps":
-                f"{SteamEndpoints.BASE_PATH_GIFT}/get_apps",
+                f"{SteamMethods.BASE_PATH_GIFT}/get_apps",
         }
 
     def __init__(self, client):

@@ -5,7 +5,7 @@ from typing import Any, Dict
 from ..models import CategoryRequest
 
 
-class ServicesEndpoints:
+class ServicesMethods:
     """Browse services and categories."""
     
     BASE_PATH = "/api/v1/products"
@@ -19,11 +19,11 @@ class ServicesEndpoints:
         """
         return {
             "get_all_services": (
-                f"{ServicesEndpoints.BASE_PATH}/get_all_services"
+                f"{ServicesMethods.BASE_PATH}/get_all_services"
             ),
-            "get_categories": f"{ServicesEndpoints.BASE_PATH}/get_categories",
+            "get_categories": f"{ServicesMethods.BASE_PATH}/get_categories",
             "get_services_by_category": (
-                f"{ServicesEndpoints.BASE_PATH}/get_services"
+                f"{ServicesMethods.BASE_PATH}/get_services"
             ),
         }
 

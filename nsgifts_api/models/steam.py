@@ -3,7 +3,7 @@
 from typing import Optional
 from pydantic import BaseModel
 
-from .common import Region
+from ..enums import Region
 
 
 class SteamRubCalculate(BaseModel):

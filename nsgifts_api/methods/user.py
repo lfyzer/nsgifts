@@ -5,7 +5,7 @@ from typing import Any, Dict
 from ..models import UserLoginSchema, UserSignupSchema
 
 
-class UserEndpoints:
+class UserMethods:
     """Handle user stuff like login and checking balance."""
     
     BASE_PATH = "/api/v1"
@@ -19,10 +19,10 @@ class UserEndpoints:
                 endpoint URLs.
         """
         return {
-            "login": f"{UserEndpoints.BASE_PATH}/get_token",
-            "signup": f"{UserEndpoints.BASE_PATH}/signup", 
-            "check_balance": f"{UserEndpoints.BASE_PATH}/check_balance",
-            "get_user_info": f"{UserEndpoints.BASE_PATH}/user",
+            "login": f"{UserMethods.BASE_PATH}/get_token",
+            "signup": f"{UserMethods.BASE_PATH}/signup", 
+            "check_balance": f"{UserMethods.BASE_PATH}/check_balance",
+            "get_user_info": f"{UserMethods.BASE_PATH}/user",
         }
 
     def __init__(self, client):

@@ -4,6 +4,11 @@ Simple Python client for NS Gifts API operations.
 """
 
 from .client import NSGiftsClient
+from .enums import (
+    Currency,
+    OrderStatus,
+    Region,
+)
 from .errors import (
     APIAuthenticationError,
     APIClientError,
@@ -16,13 +21,11 @@ from .models import (
     # Common models
     IPWhitelistRequest,
     PayOrder,
-    Region,
     # User models
     UserLoginSchema,
     UserSchema,
     UserSignupSchema,
     # Service models
-    CategoryItem,
     CategoryRequest,
     GetServicesResponseModel,
     ServiceItem,
@@ -47,8 +50,12 @@ __all__ = [
     "APIServerError", 
     "APIClientError",
     
-    # Common models
+    # Enums
     "Region",
+    "Currency",
+    "OrderStatus",
+    
+    # Common models
     "PayOrder",
     "IPWhitelistRequest",
     
@@ -59,7 +66,6 @@ __all__ = [
     
     # Service models  
     "CategoryRequest",
-    "CategoryItem",
     "ServiceItem",
     "GetServicesResponseModel",
     

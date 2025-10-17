@@ -1,22 +1,6 @@
-"""Common models and enums."""
-
-from enum import Enum
+"""Common models."""
 
 from pydantic import BaseModel
-
-
-class Region(str, Enum):
-    """Steam regions.
-    
-    Attributes:
-        RU: Russia
-        KZ: Kazakhstan  
-        UA: Ukraine
-    """
-    
-    RU = "ru"
-    KZ = "kz"
-    UA = "ua"
 
 
 class PayOrder(BaseModel):

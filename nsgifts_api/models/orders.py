@@ -22,23 +22,3 @@ class CreateOrder(BaseModel):
     quantity: float
     custom_id: str
     data: Optional[str] = None
-
-
-class NewOrderDetailsResponseModelBasic(BaseModel):
-    """Response model for order creation.
-    
-    Attributes:
-        custom_id (str): Your order ID for tracking.
-        status (int): Order status code.
-        service_id (int): Service that was ordered.
-        quantity (float): Amount ordered.
-        total (float): Total cost.
-        date (str): When the order was created.
-    """
-    
-    custom_id: str
-    status: int
-    service_id: int
-    quantity: float
-    total: float
-    date: str

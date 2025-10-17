@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 from ..models import CreateOrder, PayOrder
 
 
-class OrderEndpoints:
+class OrderMethods:
     """Handle order operations."""
     
     BASE_PATH = "/api/v1"
@@ -19,9 +19,9 @@ class OrderEndpoints:
             Order endpoint URLs.
         """
         return {
-            "create_order": f"{OrderEndpoints.BASE_PATH}/create_order",
-            "pay_order": f"{OrderEndpoints.BASE_PATH}/pay_order",
-            "get_order_info": f"{OrderEndpoints.BASE_PATH}/order_info",
+            "create_order": f"{OrderMethods.BASE_PATH}/create_order",
+            "pay_order": f"{OrderMethods.BASE_PATH}/pay_order",
+            "get_order_info": f"{OrderMethods.BASE_PATH}/order_info",
         }
 
     def __init__(self, client):

@@ -5,7 +5,7 @@ from typing import Any, Dict
 from ..models import IPWhitelistRequest
 
 
-class IPWhitelistEndpoints:
+class IPWhitelistMethods:
     """Manage IP whitelist for security."""
     
     BASE_PATH = "/api/v1/ip-whitelist"
@@ -19,13 +19,13 @@ class IPWhitelistEndpoints:
         """
         return {
             "add_ip_to_whitelist": (
-                f"{IPWhitelistEndpoints.BASE_PATH}/add"
+                f"{IPWhitelistMethods.BASE_PATH}/add"
             ),
             "remove_ip_from_whitelist": (
-                f"{IPWhitelistEndpoints.BASE_PATH}/remove"
+                f"{IPWhitelistMethods.BASE_PATH}/remove"
             ),
             "list_whitelist_ips": (
-                f"{IPWhitelistEndpoints.BASE_PATH}/list"
+                f"{IPWhitelistMethods.BASE_PATH}/list"
             ),
         }
 

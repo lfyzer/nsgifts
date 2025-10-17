@@ -18,12 +18,12 @@ from .errors import (
     APIServerError,
     APITimeoutError,
 )
-from .endpoints import (
-    IPWhitelistEndpoints,
-    OrderEndpoints,
-    ServicesEndpoints,
-    SteamEndpoints,
-    UserEndpoints,
+from .methods import (
+    IPWhitelistMethods,
+    OrderMethods,
+    ServicesMethods,
+    SteamMethods,
+    UserMethods,
 )
 
 logging.basicConfig(
@@ -40,7 +40,7 @@ class NSGiftsClient:
     the NS Gifts service. It supports automatic token refresh, retry logic for
     transient errors, and server error detection with a cooldown.
 
-    The client is organized into functional endpoints:
+    The client is organized into functional methods:
         - user: User authentication and profile operations
         - services: Service listings and categories
         - orders: Order creation and management
@@ -61,11 +61,11 @@ class NSGiftsClient:
         password (Optional[str]): User's password for authentication.
         session (Optional[aiohttp.ClientSession]): The aiohttp ClientSession
             for making requests.
-        user (UserEndpoints): User management endpoints.
-        services (ServicesEndpoints): Service and category endpoints.
-        orders (OrderEndpoints): Order management endpoints.
-        steam (SteamEndpoints): Steam-specific endpoints.
-        ip_whitelist (IPWhitelistEndpoints): IP whitelist endpoints.
+        user (UserMethods): User management methods.
+        services (ServicesMethods): Service and category methods.
+        orders (OrderMethods): Order management methods.
+        steam (SteamMethods): Steam-specific methods.
+        ip_whitelist (IPWhitelistMethods): IP whitelist methods.
     """
 
     def __init__(
@@ -100,12 +100,12 @@ class NSGiftsClient:
         self._server_error_detected = False
         self._server_error_timestamp = 0
 
-        # Initialize endpoint handlers
-        self.user = UserEndpoints(self)
-        self.services = ServicesEndpoints(self)
-        self.orders = OrderEndpoints(self)
-        self.steam = SteamEndpoints(self)
-        self.ip_whitelist = IPWhitelistEndpoints(self)
+        # Initialize method handlers
+        self.user = UserMethods(self)
+        self.services = ServicesMethods(self)
+        self.orders = OrderMethods(self)
+        self.steam = SteamMethods(self)
+        self.ip_whitelist = IPWhitelistMethods(self)
 
     async def __aenter__(self):
         """Enters the async context manager."""
