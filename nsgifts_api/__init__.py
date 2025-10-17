@@ -5,8 +5,6 @@ Simple Python client for NS Gifts API operations.
 
 from .client import NSGiftsClient
 from .enums import (
-    Currency,
-    OrderStatus,
     Region,
 )
 from .errors import (
@@ -27,11 +25,8 @@ from .models import (
     UserSignupSchema,
     # Service models
     CategoryRequest,
-    GetServicesResponseModel,
-    ServiceItem,
     # Order models
     CreateOrder,
-    NewOrderDetailsResponseModelBasic,
     # Steam models
     SteamGiftOrder,
     SteamGiftOrderCalculate,
@@ -51,9 +46,7 @@ __all__ = [
     "APIClientError",
     
     # Enums
-    "Region",
-    "Currency",
-    "OrderStatus",
+    "Region"
     
     # Common models
     "PayOrder",
@@ -65,13 +58,10 @@ __all__ = [
     "UserSchema",
     
     # Service models  
-    "CategoryRequest",
-    "ServiceItem",
-    "GetServicesResponseModel",
+    "CategoryRequest"
     
     # Order models
-    "CreateOrder",
-    "NewOrderDetailsResponseModelBasic",
+    "CreateOrder"
     
     # Steam models
     "SteamRubCalculate",
