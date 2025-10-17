@@ -128,11 +128,11 @@ class SteamEndpoints:
             Dict[str, Any]: Order details and tracking info.
         """
         data = SteamGiftOrder(
-            friend_link=friend_link,
-            sub_id=sub_id,
+            friendLink=friend_link,
+            sub_id=sub_id,  
             region=region,
-            gift_name=gift_name,
-            gift_description=gift_description,
+            giftName=gift_name,
+            giftDescription=gift_description,
         ).model_dump(exclude_none=True)
 
         return await self._client._make_authenticated_request(
