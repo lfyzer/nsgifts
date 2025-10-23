@@ -1,53 +1,41 @@
-"""Steam operation models."""
-
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
+import re
 
-from ..enums import Region
+from ..enums import SteamRegion
 
 
 class SteamRubCalculate(BaseModel):
-    """Calculate Steam amount from rubles.
-    
-    Attributes:
-        amount (int): Rubles to convert to Steam wallet.
-    """
-    
-    amount: int
+    amount: int = Field(..., gt=0)
 
 
 class SteamGiftOrderCalculate(BaseModel):
-    """Calculate Steam gift pricing.
+    sub_id: int = Field(..., gt=0, alias="subId")
+    region: SteamRegion
     
-    Check how much a Steam gift costs before ordering it.
-    
-    Note:
-        Rate limited to 1 request per 60 seconds.
-
-    Attributes:
-        sub_id (int): Steam package ID (find it in Steam store URLs).
-        region (Region): Which region's pricing to use.
-    """
-    
-    sub_id: int
-    region: Region
+    class Config:
+        allow_population_by_field_name = True
 
 
 class SteamGiftOrder(BaseModel):
-    """Create Steam gift order.
-
-    Send a Steam game as a gift to friend.
-
-    Attributes:
-        friendLink (str): Friend's Steam profile URL.
-        sub_id (int): Steam package ID to gift.
-        region (Region): Target region for pricing.
-        giftName (Optional[str]): Custom gift title (optional).
-        giftDescription (Optional[str]): Personal message for friend (optional).
-    """
-
-    friendLink: str
-    sub_id: int
-    region: Region
-    giftName: Optional[str]
-    giftDescription: Optional[str]
+    # я днем говорил. вот преобразование в snake_case
+    # в маппинге нужно добавить .model_dump(by_alias=True)
+    friend_link: str = Field(..., min_length=1, max_length=500, alias="friendLink")
+    sub_id: int = Field(..., gt=0, alias="subId")
+    region: SteamRegion
+    gift_name: Optional[str] = Field(None, max_length=100, alias="giftName")
+    gift_description: Optional[str] = Field(None, max_length=500, alias="giftDescription")
+    
+    @validator('friend_link')
+    def validate_steam_url(cls, v):
+        steam_patterns = [
+            # дипсик писал, проверь
+            r'https://steamcommunity\.com/id/[^/]+/?',
+            r'https://steamcommunity\.com/profiles/\d+/?',
+        ]
+        if not any(re.match(pattern, v) for pattern in steam_patterns):
+            raise ValueError('Invalid Steam profile URL format')
+        return v
+    
+    class Config:
+        allow_population_by_field_name = True
