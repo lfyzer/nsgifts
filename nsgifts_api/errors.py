@@ -2,98 +2,92 @@
 
 
 class APIError(Exception):
-    """Base exception for API client errors.
-    
-    This serves as the base class for all exceptions that may occur when
-    interacting with the API. All specific API error types inherit from this
-    class.
-    """
+    ...
 
 
 class APIConnectionError(APIError):
-    """Raised for network connection errors.
-    
-    This exception occurs when there are issues with the network connection,
-    such as:
-    - Unable to establish a connection to the server
-    - Connection interrupted during a request
-    - DNS resolution problems
-    - Socket errors
-    - Proxy connection failures
-    
-    This typically indicates issues with the client's network, internet 
-    service provider, or intermediate network infrastructure rather than 
-    problems with the API server itself.
-    """
+    ...
 
 
 class APITimeoutError(APIError):
-    """Raised when an API request times out.
-    
-    This exception occurs when an API request does not receive a response 
-    within the established timeout period. Timeouts may happen due to:
-    - High network latency
-    - Server overload leading to slow response times
-    - Long-running operations on the server side
-    - Network congestion
-    
-    Increasing the client's timeout settings might help in some cases, but
-    persistent timeouts could indicate server-side performance issues.
-    """
+    ...
 
 
 class APIAuthenticationError(APIError):
-    """Raised for authentication or token refresh errors.
-    
-    This exception occurs when there are problems with authentication, 
-    such as:
-    - Invalid credentials (incorrect username/password)
-    - Expired access token
-    - Failed token refresh attempts
-    - Access denied to requested resource (401 Unauthorized)
-    - Revoked or invalid API keys
-    - Account restrictions or suspensions
-    
-    This typically requires user intervention to provide correct credentials
-    or resolve account-related issues.
-    """
+    ...
 
 
 class APIServerError(APIError):
-    """Raised when the API returns a 5xx error.
-    
-    This exception occurs when there are problems on the server side (status
-    codes 500-599), such as:
-    - 500 Internal Server Error: Unexpected condition on the server
-    - 502 Bad Gateway: Invalid response from an upstream server
-    - 503 Service Unavailable: Server is temporarily unavailable 
-      (maintenance or overload)
-    - 504 Gateway Timeout: Upstream server failed to respond in time
-    - 507 Insufficient Storage: Server storage limit reached
-    
-    These errors are generally temporary and not caused by the client 
-    request. Implementing retry logic with exponential backoff is 
-    recommended for handling these errors.
-    """
+    def __init__(
+            self,
+            message: str,
+            status_code: int = None,
+            response_data: dict = None
+    ):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_data = response_data or {}
+
+    def __str__(self):
+        if self.status_code:
+            return f"{self.status_code}: {super().__str__()}"
+        return super().__str__()
+
+    @classmethod
+    def from_status_code(
+            cls,
+            status_code: int,
+            message: str = None,
+            response_data: dict = None
+    ):
+        if not message:
+            status_messages = {
+                500: "Internal Server Error - Unexpected server condition",
+                502: "Bad Gateway - Invalid response from upstream server",
+                503: "Service Unavailable - Server temporarily unavailable",
+                504: "Gateway Timeout - Upstream server timeout",
+                507: "Insufficient Storage - Server storage limit reached",
+            }
+
+            message = status_messages.get(status_code, f"Server error {status_code}")
+
+        return cls(message, status_code, response_data)
 
 
 class APIClientError(APIError):
-    """Raised when the API returns a 4xx error.
-    
-    This exception occurs when there are errors related to the client 
-    request (status codes 400-499), such as:
-    - 400 Bad Request: The request was malformed or contained invalid
-      parameters
-    - 403 Forbidden: The client lacks necessary permissions for the 
-      requested resource
-    - 404 Not Found: The requested resource does not exist
-    - 409 Conflict: The request conflicts with the current state of the 
-      server
-    - 422 Unprocessable Entity: The server understands the content type but
-      cannot process the request
-    - 429 Too Many Requests: The client has sent too many requests in a 
-      given time period
-    
-    These errors typically require modifying the request parameters or
-    addressing permission issues before retrying the request.
-    """
+    def __init__(
+            self,
+            message: str,
+            status_code: int = None,
+            response_data: dict = None
+    ):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_data = response_data or {}
+
+    def __str__(self):
+        if self.status_code:
+            return f"{self.status_code}: {super().__str__()}"
+        return super().__str__()
+
+    @classmethod
+    def from_status_code(
+            cls,
+            status_code: int,
+            message: str = None,
+            response_data: dict = None
+    ):
+        if not message:
+            status_messages = {
+                400: "Bad Request - Invalid parameters",
+                401: "Unauthorized - Authentication required",
+                403: "Forbidden - Insufficient permissions",
+                404: "Not Found - Resource does not exist",
+                409: "Conflict - Request conflicts with current state",
+                422: "Unprocessable Entity - Invalid request format",
+                429: "Too Many Requests - Rate limit exceeded",
+            }
+
+            message = status_messages.get(status_code, f"Client error {status_code}")
+
+        return cls(message, status_code, response_data)
