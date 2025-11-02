@@ -3,11 +3,11 @@
 This package contains all API method definitions organized by functionality.
 Each module represents a specific domain of the NS Gifts API:
 
+- ip_whitelist: IP whitelist management functionality
 - user: User management, authentication, and profile operations
 - services: Service listings, categories, and product information
 - orders: Order creation, payment, and status tracking
 - steam: Steam-specific operations including gifts and currency calculations
-- ip_whitelist: IP whitelist management functionality
 
 Usage:
     from nsgifts_api.methods import UserMethods, ServicesMethods

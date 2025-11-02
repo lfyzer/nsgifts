@@ -1,22 +1,34 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, Optional, Union
 
 import aiohttp
-from aiohttp import (
-    ClientConnectionError,
-    ClientResponseError,
-    ClientTimeout,
+from aiohttp import ClientResponseError, ClientTimeout
+from aiohttp.client_exceptions import (
+    ClientConnectorError,
+    ServerTimeoutError,
 )
 
+from .config import ClientConfig
+from .enums import (
+    ContentType,
+    AuthHeader,
+    HTTPRequestType,
+    UserEndpoint,
+    ServicesEndpoint,
+    OrdersEndpoint,
+    SteamEndpoint,
+    IPWhitelistEndpoint
+)
 from .errors import (
     APIError,
     APIAuthenticationError,
-    APIClientError,
-    APIConnectionError,
     APIServerError,
     APITimeoutError,
+    APIConnectionError,
+    from_http_status,
 )
 from .methods import (
     IPWhitelistMethods,
@@ -26,10 +38,6 @@ from .methods import (
     UserMethods,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 _logger = logging.getLogger(__name__)
 
 
@@ -70,46 +78,127 @@ class NSGiftsClient:
 
     def __init__(
         self,
-        base_url: str = "https://api.ns.gifts",
-        max_retries: int = 3,
-        request_timeout: int = 30,
-        server_error_cooldown: int = 300,
-        token_refresh_buffer: int = 300,
+        config: Optional[ClientConfig] = None,
+        base_url: Optional[str] = None,
+        max_retries: Optional[int] = None,
+        request_timeout: Optional[int] = None,
+        server_error_cooldown: Optional[int] = None,
+        token_refresh_buffer: Optional[int] = None,
     ):
         """Initializes the NSGiftsClient.
-
+        
+        You can provide either a ClientConfig object for full configuration
+        control, or individual parameters for backward compatibility.
+        
         Args:
-            base_url (str): The base URL for the API.
-            max_retries (int): Maximum retry attempts.
-            request_timeout (int): Request timeout in seconds.
-            server_error_cooldown (int): Cooldown after server error.
-            token_refresh_buffer (int): Buffer before token expiry for refresh.
+            config: ClientConfig instance with all settings. If provided,
+                individual parameters will override config values.
+            base_url: The base URL for the API. Overrides config.base_url.
+            max_retries: Maximum retry attempts. Overrides config.max_retries.
+            request_timeout: Request timeout in seconds. Overrides
+                config.request_timeout.
+            server_error_cooldown: Cooldown after server error. Overrides
+                config.server_error_cooldown.
+            token_refresh_buffer: Buffer before token expiry for refresh.
+                Overrides config.token_refresh_buffer.
         """
-        self.base_url = base_url
-        self._max_retries = max_retries
-        self._request_timeout = request_timeout
-        self._server_error_cooldown = server_error_cooldown
-        self._token_refresh_buffer = token_refresh_buffer
+        if config is None:
+            config = ClientConfig()
+        
+        self._config = config
+        self.base_url = base_url or config.base_url
+        self._max_retries = (
+            max_retries if max_retries is not None else config.max_retries
+        )
+        self._request_timeout = (
+            request_timeout if request_timeout is not None
+            else config.request_timeout
+        )
+        self._server_error_cooldown = (
+            server_error_cooldown if server_error_cooldown is not None
+            else config.server_error_cooldown
+        )
+        self._token_refresh_buffer = (
+            token_refresh_buffer if token_refresh_buffer is not None
+            else config.token_refresh_buffer
+        )
+        
+        if config.enable_logging:
+            logging.basicConfig(
+                level=getattr(logging, config.log_level.upper()),
+                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            )
+        
         self.token: Optional[str] = None
         self.token_expiry: int = 0
-        self.email: Optional[str] = None
-        self.password: Optional[str] = None
+        self.email: Optional[str] = config.email
+        self.password: Optional[str] = config.password
         self.session: Optional[aiohttp.ClientSession] = None
         self._token_lock = asyncio.Lock()
         self._session_lock = asyncio.Lock()
         self._server_error_detected = False
         self._server_error_timestamp = 0
+        self._auto_authenticated = False
 
-        # Initialize method handlers
         self.user = UserMethods(self)
         self.services = ServicesMethods(self)
         self.orders = OrderMethods(self)
         self.steam = SteamMethods(self)
         self.ip_whitelist = IPWhitelistMethods(self)
 
+    @staticmethod
+    def _sanitize_input(value: str, max_length: int = 1000) -> str:
+        """Sanitizes string input by removing dangerous characters.
+        
+        Args:
+            value (str): Input string to sanitize.
+            max_length (int): Maximum allowed length.
+            
+        Returns:
+            str: Sanitized string.
+            
+        Raises:
+            ValueError: If input is invalid or too long.
+        """
+        if not isinstance(value, str):
+            raise ValueError("Input must be a string")
+        
+        sanitized = re.sub(r'[<>"\']', '', value.strip())
+        
+        if len(sanitized) > max_length:
+            raise ValueError(
+                f"Input too long. Maximum {max_length} characters allowed"
+            )
+        
+        if not sanitized:
+            raise ValueError("Input cannot be empty after sanitization")
+        
+        return sanitized
+
     async def __aenter__(self):
-        """Enters the async context manager."""
+        """Enters the async context manager.
+        
+        Automatically authenticates if credentials are provided in config
+        and auto_auth is enabled.
+        """
         await self._ensure_session()
+        
+        if (
+            self._config.auto_auth 
+            and self.email 
+            and self.password 
+            and not self._auto_authenticated
+        ):
+            try:
+                await self.user.login(self.email, self.password)
+                self._auto_authenticated = True
+                _logger.info("Auto-authentication successful")
+            except Exception as e:
+                _logger.error(f"Auto-authentication failed: {e}")
+                raise APIAuthenticationError(
+                    f"Auto-authentication failed: {e}"
+                ) from e
+        
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -129,9 +218,9 @@ class NSGiftsClient:
             Dict[str, str]: Dictionary of headers, including Authorization
                 if token is set.
         """
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": ContentType.JSON.value}
         if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
+            headers["Authorization"] = f"{AuthHeader.BEARER.value} {self.token}"
         return headers
 
     async def _ensure_session(self):
@@ -198,7 +287,11 @@ class NSGiftsClient:
             APIAuthenticationError: If login fails.
             APIClientError: If client error occurs (4xx responses).
         """
-        url = f"{self.base_url}{endpoint}"
+        # Ensure endpoint is a string value, not enum
+        endpoint_value = (
+            endpoint.value if hasattr(endpoint, 'value') else endpoint
+        )
+        url = f"{self.base_url}{endpoint_value}"
         last_error = None
         await self._ensure_session()
 
@@ -224,13 +317,13 @@ class NSGiftsClient:
                     url,
                     json=json_data,
                     headers=self._get_headers(),
-                    timeout=self._request_timeout,
+                    timeout=ClientTimeout(total=self._request_timeout),
                 ) as response:
                     result = await response.json()
 
                     # Handle token response for both login and signup
-                    if (endpoint.endswith("/get_token")
-                            or endpoint.endswith("/signup")):
+                    if (endpoint_value.endswith("/get_token")
+                            or endpoint_value.endswith("/signup")):
                         if "access_token" in result:
                             self.token = result["access_token"]
                             if "valid_thru" in result:
@@ -251,29 +344,47 @@ class NSGiftsClient:
                         )
                         try:
                             await self._ensure_valid_token()
-                            # Retry the request with the new token
                             continue
                         except APIAuthenticationError:
-                            # Refresh failed, so the original 401 is a
-                            # permanent issue
                             raise APIAuthenticationError(
                                 "Authentication failed after token refresh."
                             ) from e
-                    else:
-                        raise APIClientError(
-                            f"Client error at {url}: {e.status} {e.message}"
-                        ) from e
+                    else:  # 400-499 other than 401
+                        try:
+                            response_data = await e.response.json()
+                        except Exception:
+                            response_data = {"detail": str(e)}
+                        
+                        error = from_http_status(
+                            e.status,
+                            response_data=response_data
+                        )
+                        _logger.error(
+                            f"Client error at {url}: {error}"
+                        )
+                        raise error from e
                 else:  # 500+
                     self._server_error_detected = True
                     self._server_error_timestamp = int(time.time())
-                    raise APIServerError(
-                        f"Server error at {url}: {e.status} {e.message}"
-                    ) from e
-            except (ClientConnectionError, ClientTimeout) as e:
+                    
+                    try:
+                        response_data = await e.response.json()
+                    except Exception:
+                        response_data = {"detail": str(e)}
+                    
+                    error = from_http_status(
+                        e.status,
+                        response_data=response_data
+                    )
+                    _logger.error(
+                        f"Server error at {url}: {error}"
+                    )
+                    raise error from e
+            except (ClientConnectorError, ServerTimeoutError) as e:
                 last_error = e
                 error_type = (
                     "Connection error"
-                    if isinstance(e, ClientConnectionError)
+                    if isinstance(e, ClientConnectorError)
                     else "Request timeout"
                 )
                 _logger.warning(
@@ -287,7 +398,7 @@ class NSGiftsClient:
                 else:
                     ErrorClass = (
                         APIConnectionError
-                        if isinstance(e, ClientConnectionError)
+                        if isinstance(e, ClientConnectorError)
                         else APITimeoutError
                     )
                     raise ErrorClass(
@@ -320,7 +431,17 @@ class NSGiftsClient:
         _logger.info("Server error state has been manually reset")
 
     async def _make_authenticated_request(
-        self, method: str, endpoint: str, json_data: Optional[Dict] = None
+        self, 
+        method: Union[str, HTTPRequestType], 
+        endpoint: Union[
+            str,
+            UserEndpoint,
+            ServicesEndpoint,
+            OrdersEndpoint,
+            SteamEndpoint,
+            IPWhitelistEndpoint
+        ],
+        json_data: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Makes an authenticated request, ensuring a valid token exists.
 

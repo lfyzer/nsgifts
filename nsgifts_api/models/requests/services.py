@@ -1,6 +1,6 @@
-"""Service and category models."""
+"""Service API request models."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CategoryRequest(BaseModel):
@@ -10,4 +10,4 @@ class CategoryRequest(BaseModel):
         category_id (int): Category ID to filter by.
     """
     
-    category_id: int
+    category_id: int = Field(..., gt=0)

@@ -1,29 +1,17 @@
 """User operations - login, signup, balance."""
 
-from typing import Any, Dict
-
-from ..models import UserLoginSchema, UserSignupSchema
+from ..enums import UserEndpoint, HTTPRequestType
+from ..models import (
+    LoginResponse,
+    SignupResponse,
+    UserInfoResponse,
+    UserLoginSchema,
+    UserSignupSchema,
+)
 
 
 class UserMethods:
     """Handle user stuff like login and checking balance."""
-    
-    BASE_PATH = "/api/v1"
-    
-    @staticmethod
-    def get_endpoints() -> Dict[str, str]:
-        """Get API endpoint URLs.
-        
-        Returns:
-            Dict[str, str]: Dictionary mapping operation names to their
-                endpoint URLs.
-        """
-        return {
-            "login": f"{UserMethods.BASE_PATH}/get_token",
-            "signup": f"{UserMethods.BASE_PATH}/signup", 
-            "check_balance": f"{UserMethods.BASE_PATH}/check_balance",
-            "get_user_info": f"{UserMethods.BASE_PATH}/user",
-        }
 
     def __init__(self, client):
         """Initialize with client reference.
@@ -31,9 +19,11 @@ class UserMethods:
         Args:
             client: Main NSGiftsClient instance.
         """
+
         self._client = client
 
-    async def login(self, email: str, password: str) -> Dict[str, Any]:
+
+    async def login(self, email: str, password: str) -> LoginResponse:
         """Log in and get your API token.
         
         Token gets saved automatically for future requests.
@@ -43,24 +33,30 @@ class UserMethods:
             password (str): Your password.
             
         Returns:
-            Dict[str, Any]: Login response with access token.
+            LoginResponse: Login response with access token, expiry, and
+                user ID. Access via response.access_token,
+                response.valid_thru, response.user_id.
         """
+
         self._client.email = email
         self._client.password = password
         data = UserLoginSchema(email=email, password=password).model_dump()
-        return await self._client._request_with_retries(
-            "POST", 
-            self.get_endpoints()["login"], 
-            data, 
+        result = await self._client._request_with_retries(
+            HTTPRequestType.POST,
+            UserEndpoint.LOGIN,
+            data,
             is_auth_request=True
         )
+
+        return LoginResponse(**result)
+
 
     async def signup(
         self, 
         username: str,
         email: str, 
         password: str
-    ) -> Dict[str, Any]:
+    ) -> SignupResponse:
         """Create new account.
         
         Your account is ready to use immediately after signup.
@@ -71,8 +67,10 @@ class UserMethods:
             password (str): User password.
                 
         Returns:
-            Dict[str, Any]: Registration response with access token.
+            SignupResponse: Registration response with access token.
+                Access via response.access_token, response.token_type.
         """
+
         self._client.email = email
         self._client.password = password
         data = UserSignupSchema(
@@ -80,31 +78,41 @@ class UserMethods:
             email=email, 
             password=password
         ).model_dump()
-        return await self._client._request_with_retries(
-            "POST", 
-            self.get_endpoints()["signup"], 
+
+        result = await self._client._request_with_retries(
+            HTTPRequestType.POST, 
+            UserEndpoint.SIGNUP, 
             data, 
             is_auth_request=True
         )
 
-    async def check_balance(self) -> Dict[str, Any]:
+        return SignupResponse(**result)
+
+
+    async def check_balance(self) -> float:
         """Check your account balance.
         
         Returns:
-            Dict[str, Any]: Current balance info.
+            float: Current account balance.
         """
+
         return await self._client._make_authenticated_request(
-            "POST", 
-            self.get_endpoints()["check_balance"]
+            HTTPRequestType.POST,
+            UserEndpoint.CHECK_BALANCE
         )
 
-    async def get_user_info(self) -> Dict[str, Any]:
+
+    async def get_user_info(self) -> UserInfoResponse:
         """Get your account info.
         
         Returns:
-            Dict[str, Any]: User profile data.
+            UserInfo: User profile data. Access via response.id,
+                response.username, response.login,
+                response.rights, response.balance.
         """
-        return await self._client._make_authenticated_request(
-            "POST", 
-            self.get_endpoints()["get_user_info"]
+
+        result = await self._client._make_authenticated_request(
+            HTTPRequestType.POST,
+            UserEndpoint.GET_USER_INFO
         )
+        return UserInfoResponse(**result)

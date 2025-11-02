@@ -2,42 +2,21 @@
 
 from typing import Any, Dict, List, Optional, Union
 
-from ..enums import Region
+from ..enums import Region, SteamEndpoint, HTTPRequestType
 from ..models import (
     PayOrder,
+    SteamAmountResponse,
+    SteamCurrencyRateResponse,
+    SteamGiftCalculateResponse,
     SteamGiftOrder,
-    SteamGiftOrderCalculate, 
+    SteamGiftOrderCalculate,
+    SteamGiftOrderResponse,
     SteamRubCalculate,
 )
 
 
 class SteamMethods:
     """Steam operations like sending gifts and checking prices."""
-    
-    BASE_PATH_STEAM = "/api/v1/steam"
-    BASE_PATH_GIFT = "/api/v1/steam_gift"
-    
-    @staticmethod
-    def get_endpoints() -> Dict[str, str]:
-        """Get Steam API endpoints.
-        
-        Returns:
-            Dict[str, str]: Endpoint URLs for Steam operations.
-        """
-        return {
-            "calculate_steam_amount":
-                f"{SteamMethods.BASE_PATH_STEAM}/get_amount",
-            "get_steam_currency_rate":
-                f"{SteamMethods.BASE_PATH_STEAM}/get_currency_rate",
-            "calculate_steam_gift":
-                f"{SteamMethods.BASE_PATH_GIFT}/calculate",
-            "create_steam_gift_order":
-                f"{SteamMethods.BASE_PATH_GIFT}/create_order",
-            "pay_steam_gift_order":
-                f"{SteamMethods.BASE_PATH_GIFT}/pay_order",
-            "get_steam_apps":
-                f"{SteamMethods.BASE_PATH_GIFT}/get_apps",
-        }
 
     def __init__(self, client):
         """Initialize with client reference.
@@ -45,9 +24,13 @@ class SteamMethods:
         Args:
             client: Main NSGiftsClient instance.
         """
+
         self._client = client
 
-    async def calculate_steam_amount(self, amount: int) -> Dict[str, Any]:
+
+    async def calculate_steam_amount(
+        self, amount: int
+    ) -> SteamAmountResponse:
         """Calculate Steam amount from rubles.
         
         Shows how much Steam wallet money you get for your rubles.
@@ -56,54 +39,71 @@ class SteamMethods:
             amount (int): Rubles to convert.
                 
         Returns:
-            Dict[str, Any]: Calculation with exchange rates and fees.
+            SteamAmountResponse: Calculated Steam amount. Access via
+                response.exchange_rate, response.usd_price.
         """
+
         data = SteamRubCalculate(amount=amount).model_dump()
-        return await self._client._make_authenticated_request(
-            "POST", 
-            self.get_endpoints()["calculate_steam_amount"], 
+        result = await self._client._make_authenticated_request(
+            HTTPRequestType.POST,
+            SteamEndpoint.CALCULATE_AMOUNT,
             json_data=data
         )
 
-    async def get_steam_currency_rate(self) -> Dict[str, Any]:
+        return SteamAmountResponse(**result)
+
+
+    async def get_steam_currency_rate(self) -> SteamCurrencyRateResponse:
         """Get current Steam exchange rates.
         
         Returns:
-            Dict[str, Any]: Current currency rates.
+            SteamCurrencyRateResponse: Current currency rates. Access via
+                response.date, response.rub_usd, response.kzt_usd,
+                response.uah_usd.
         """
-        return await self._client._make_authenticated_request(
-            "POST", 
-            self.get_endpoints()["get_steam_currency_rate"]
+
+        result = await self._client._make_authenticated_request(
+            HTTPRequestType.POST,
+            SteamEndpoint.GET_CURRENCY_RATE
         )
+
+        return SteamCurrencyRateResponse(**result)
+
 
     async def calculate_steam_gift(
         self, 
         sub_id: int, 
         region: Union[Region, str]
-    ) -> Dict[str, Any]:
+    ) -> SteamGiftCalculateResponse:
         """Calculate Steam gift price.
         
         Check how much it costs to gift a game before ordering.
         
         Note:
-            Rate limited to 1 request per 60 seconds.
+            Rate limited to 1 request per 30 seconds.
 
         Args:
             sub_id (int): Steam package ID (find it in Steam store URLs).
             region (Union[Region, str]): Target region ('ru', 'kz', 'ua').
                 
         Returns:
-            Dict[str, Any]: Price and availability info for the gift.
+            SteamGiftCalculateResponse: Price and availability info.
+                Access via response.sub_id, response.region, response.price.
         """
+
         data = SteamGiftOrderCalculate(
             sub_id=sub_id, 
             region=region
-        ).model_dump()
-        return await self._client._make_authenticated_request(
-            "POST", 
-            self.get_endpoints()["calculate_steam_gift"], 
+        ).model_dump(by_alias=True)
+
+        result = await self._client._make_authenticated_request(
+            HTTPRequestType.POST,
+            SteamEndpoint.CALCULATE_GIFT,
             json_data=data
         )
+
+        return SteamGiftCalculateResponse(**result)
+
 
     async def create_steam_gift_order(
         self,
@@ -112,7 +112,7 @@ class SteamMethods:
         region: Union[Region, str],
         gift_name: Optional[str] = None,
         gift_description: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> SteamGiftOrderResponse:
         """Create Steam gift order.
         
         Send a Steam game as a gift to your friend.
@@ -125,21 +125,27 @@ class SteamMethods:
             gift_description (Optional[str]): Personal message (optional).
                 
         Returns:
-            Dict[str, Any]: Order details and tracking info.
+            SteamGiftOrderResponse: Order details. Access via
+                response.custom_id, response.status, response.service_id,
+                response.quantity, response.total, response.date.
         """
-        data = SteamGiftOrder(
-            friendLink=friend_link,
-            sub_id=sub_id,  
-            region=region,
-            giftName=gift_name,
-            giftDescription=gift_description,
-        ).model_dump(exclude_none=True)
 
-        return await self._client._make_authenticated_request(
-            "POST",
-            self.get_endpoints()["create_steam_gift_order"],
+        data = SteamGiftOrder(
+            friend_link=friend_link,
+            sub_id=sub_id,
+            region=region,
+            gift_name=gift_name,
+            gift_description=gift_description
+        ).model_dump(exclude_none=True, by_alias=True)
+
+        result = await self._client._make_authenticated_request(
+            HTTPRequestType.POST,
+            SteamEndpoint.CREATE_GIFT_ORDER,
             json_data=data,
         )
+
+        return SteamGiftOrderResponse(**result)
+
 
     async def pay_steam_gift_order(self, custom_id: str) -> Dict[str, Any]:
         """Pay for Steam gift order.
@@ -152,12 +158,14 @@ class SteamMethods:
         Returns:
             Dict[str, Any]: Payment status and delivery info.
         """
-        data = PayOrder(custom_id=custom_id).model_dump()
+
+        data = PayOrder(custom_id=custom_id).model_dump(by_alias=True)
         return await self._client._make_authenticated_request(
-            "POST", 
-            self.get_endpoints()["pay_steam_gift_order"], 
+            HTTPRequestType.POST,
+            SteamEndpoint.PAY_GIFT_ORDER,
             json_data=data
         )
+
 
     async def get_steam_apps(self) -> List[Dict[str, Any]]:
         """Get all available Steam apps with Sub/Package ID prices.
@@ -172,12 +180,14 @@ class SteamMethods:
                 for different regions.
                 
         Raises:
-            APIAuthenticationError: If not authenticated or token expired.
+            APIAuthenticationError: If not authenticated or token
+                expired.
             APIServerError: If server error occurs.
             APIConnectionError: If connection fails.
             APITimeoutError: If request times out.
         """
+
         return await self._client._make_authenticated_request(
-            "POST", 
-            self.get_endpoints()["get_steam_apps"]
+            HTTPRequestType.POST,
+            SteamEndpoint.GET_APPS
         )

@@ -1,4 +1,4 @@
-"""Common enumerations."""
+"""Steam-related enumerations."""
 
 from enum import Enum
 
