@@ -3,7 +3,7 @@
 Simple Python client for NS Gifts API operations.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __author__ = "lfyzer"
 __license__ = "MIT"
 

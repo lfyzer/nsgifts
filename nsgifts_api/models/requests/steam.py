@@ -49,6 +49,8 @@ class SteamGiftOrder(BaseModel):
         gift_description (Optional[str]): Personal message (optional).
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+    
     friend_link: str = Field(
         ..., min_length=1, max_length=500, alias="friendLink"
     )

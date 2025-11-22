@@ -41,7 +41,7 @@ class ClientConfig:
     password: Optional[str] = None
     auto_auth: bool = True
     max_retries: int = 3
-    request_timeout: int = 30
+    request_timeout: int = 90
     server_error_cooldown: int = 300
     token_refresh_buffer: int = 300
     enable_logging: bool = False
