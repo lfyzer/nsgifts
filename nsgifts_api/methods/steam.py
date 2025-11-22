@@ -94,7 +94,7 @@ class SteamMethods:
         data = SteamGiftOrderCalculate(
             sub_id=sub_id, 
             region=region
-        ).model_dump(by_alias=True)
+        ).model_dump()
 
         result = await self._client._make_authenticated_request(
             HTTPRequestType.POST,

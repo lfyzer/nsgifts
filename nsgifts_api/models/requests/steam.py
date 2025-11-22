@@ -24,15 +24,14 @@ class SteamGiftOrderCalculate(BaseModel):
     Check how much a Steam gift costs before ordering it.
     
     Note:
-        Rate limited to 1 request per 60 seconds.
+        Rate limited to 1 request per 30 seconds.
 
     Attributes:
         sub_id (int): Steam package ID (find it in Steam store URLs).
         region (Region): Which region's pricing to use.
     """
-    
-    model_config = ConfigDict(populate_by_name=True)
-    sub_id: int = Field(..., gt=0, alias="subId")
+
+    sub_id: int = Field(..., gt=0)
     region: Region
 
 
