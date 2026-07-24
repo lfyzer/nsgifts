@@ -1,141 +1,101 @@
-"""Order management - create, pay, track."""
+"""Unified order creation, payment, and status operations."""
 
-import uuid
-from typing import Optional
+from collections.abc import Mapping, Sequence
+from uuid import UUID, uuid4
 
-from ..enums import OrdersEndpoint, HTTPRequestType
+from ..enums import APIOperation
 from ..models import (
-    CreateOrder,
-    OrderResponse,
-    PayOrder,
+    CreateOrderRequest,
+    CreateOrderResponse,
+    JSONScalar,
+    OrderField,
     OrderInfoResponse,
-    PaymentResponse
+    OrderReference,
+    PaymentResponse,
+    PayOrderRequest,
 )
+from .base import Transport
+
 
 class OrderMethods:
-    """Handle order operations."""
+    """Create, pay, and inspect all API v2 order types."""
 
-    def __init__(self, client):
-        """Initialize with client reference.
-        
-        Args:
-            client: Main NSGiftsClient instance.
-        """
+    def __init__(self, transport: Transport) -> None:
+        """Initialize the order method group."""
+        self._transport = transport
 
-        self._client = client
-
-
-    async def create_order(
+    async def create(
         self,
+        *,
         service_id: int,
-        quantity: float,
-        custom_id: Optional[str] = None,
-        data: Optional[str] = None,
-    ) -> OrderResponse:
-
-        """Create new order.
-
-        Order needs to be paid separately with pay_order().
+        fields: Sequence[OrderField | Mapping[str, JSONScalar]],
+        custom_id: str | UUID | None = None,
+    ) -> CreateOrderResponse:
+        """Create an unpaid order using its dynamic field schema.
 
         Args:
-            service_id (int): Service ID from catalog.
-            quantity (float): How much to order.
-            custom_id (Optional[str]): Your order ID (auto-generated if
-                not provided).
-            data (Optional[str]): Extra info like Steam username
-                (optional).
+            service_id: Current service ID from ``catalog.get_stock``.
+            fields: Key/value pairs required by the category schema.
+            custom_id: Optional UUID4 idempotency key.
 
         Returns:
-            OrderResponse: Order creation details. Access via
-                response.custom_id, response.status, response.service_id,
-                response.quantity, response.total, response.date.
+            The created order and amount due.
         """
-
-        if not custom_id:
-            custom_id = str(uuid.uuid4())
-
-        order_data = CreateOrder(
-            service_id=service_id,
-            quantity=quantity,
-            custom_id=custom_id,
-            data=data,
-        ).model_dump(exclude_none=True)
-
-        result = await self._client._make_authenticated_request(
-            HTTPRequestType.POST,
-            OrdersEndpoint.CREATE_ORDER, 
-            json_data=order_data
+        normalized_fields = [
+            field
+            if isinstance(field, OrderField)
+            else OrderField.model_validate(field)
+            for field in fields
+        ]
+        request = CreateOrderRequest.model_validate(
+            {
+                "service_id": service_id,
+                "custom_id": uuid4() if custom_id is None else custom_id,
+                "fields": normalized_fields,
+            }
         )
+        data = await self._transport.request(
+            APIOperation.CREATE_ORDER,
+            json_body=request.to_payload(),
+        )
+        return CreateOrderResponse.model_validate(data)
 
-        return OrderResponse(**result)
+    async def pay(
+        self,
+        custom_id: str | UUID,
+        *,
+        totp_code: str | None = None,
+    ) -> PaymentResponse:
+        """Pay a created order exactly once.
 
-
-    async def pay_order(self, custom_id: str) -> PaymentResponse:
-        """Process payment for an existing order.
-        
-        Initiates payment processing for an order that was previously 
-        created. The order must exist and be in a payable state.
-        
         Args:
-            custom_id (str): The custom identifier of the order to pay
-                for. This is either the custom_id provided during order
-                creation or the auto-generated UUID4.
-                
+            custom_id: UUID4 used to create the order.
+            totp_code: Optional six-digit purchase-authenticator code.
+
         Returns:
-            PaymentResponse: Payment result details. Access via
-                response.custom_id, response.status, response.new_balance,
-                response.msg, response.pins.
-                
-        Raises:
-            APIAuthenticationError: If not authenticated or token
-                expired.
-            APIClientError: If custom_id is invalid or order cannot be
-                paid.
-            APIServerError: If server error occurs.
-            APIConnectionError: If connection fails.
-            APITimeoutError: If request times out.
+            Immediate or asynchronous payment state.
         """
-
-        data = PayOrder(custom_id=custom_id).model_dump()
-
-        result = await self._client._make_authenticated_request(
-            HTTPRequestType.POST,
-            OrdersEndpoint.PAY_ORDER,
-            json_data=data
+        request = PayOrderRequest.model_validate(
+            {
+                "custom_id": custom_id,
+                "totp_code": totp_code,
+            }
         )
-
-        return PaymentResponse(**result)
-
-    async def get_order_info(self, custom_id: str) -> OrderInfoResponse:
-        """Retrieve detailed information about an order.
-        
-        Returns comprehensive details about an order including status,
-        completion information, and any relevant order data.
-        
-        Args:
-            custom_id (str): The custom identifier of the order to query.
-                This is either the custom_id provided during order
-                creation or the auto-generated UUID4.
-                
-        Returns:
-            OrderInfoResponse: Detailed order information. Access via
-                response.custom_id, response.status, response.status_message,
-                response.product, response.quantity, response.total_price, etc.
-                
-        Raises:
-            APIAuthenticationError: If not authenticated or token
-                expired.
-            APIClientError: If custom_id is invalid or order not found.
-            APIServerError: If server error occurs.
-            APIConnectionError: If connection fails.
-            APITimeoutError: If request times out.
-        """
-
-        data = PayOrder(custom_id=custom_id).model_dump()
-        result = await self._client._make_authenticated_request(
-            HTTPRequestType.POST,
-            OrdersEndpoint.GET_ORDER_INFO, 
-            json_data=data
+        data = await self._transport.request(
+            APIOperation.PAY_ORDER,
+            json_body=request.to_payload(),
         )
+        return PaymentResponse.model_validate(data)
 
-        return OrderInfoResponse(**result)
+    async def get(
+        self,
+        custom_id: str | UUID,
+    ) -> OrderInfoResponse:
+        """Return the current state and delivered order data."""
+        request = OrderReference.model_validate({"custom_id": custom_id})
+        value = str(request.custom_id)
+        data = await self._transport.request(
+            APIOperation.ORDER_INFO,
+            path_params={"custom_id": value},
+        )
+        return OrderInfoResponse.model_validate(data)

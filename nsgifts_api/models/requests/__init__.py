@@ -1,36 +1,23 @@
-"""Request models package.
+"""Public API v2 request models."""
 
-This package contains all Pydantic models for API requests.
-Each module contains request models for specific functionality:
-
-- ip_whitelist: IP whitelist management requests
-- user: User authentication and registration requests
-- services: Service-related requests
-- orders: Order creation and management requests
-- steam: Steam-specific operation requests
-
-Usage:
-    from nsgifts_api.models.requests.ip_whitelist import IPWhitelistRequest
-    from nsgifts_api.models.requests.user import UserLoginSchema
-    from nsgifts_api.models.requests.orders import CreateOrder
-    from nsgifts_api.models.requests.steam import SteamGiftOrder
-"""
-
-from .ip_whitelist import IPWhitelistRequest
-from .orders import CreateOrder, PayOrder
-from .services import CategoryRequest
-from .steam import SteamGiftOrder, SteamGiftOrderCalculate, SteamRubCalculate
-from .user import UserLoginSchema, UserSchema, UserSignupSchema
+from .auth import TokenRequest
+from .base import JSONScalar, RequestModel
+from .orders import (
+    CreateOrderRequest,
+    OrderField,
+    OrderReference,
+    PayOrderRequest,
+)
+from .steam import ExchangeRateRequest, SteamUserRequest
 
 __all__ = [
-    "PayOrder",
-    "IPWhitelistRequest",
-    "UserLoginSchema",
-    "UserSignupSchema", 
-    "UserSchema",
-    "CategoryRequest",
-    "CreateOrder",
-    "SteamRubCalculate",
-    "SteamGiftOrderCalculate",
-    "SteamGiftOrder",
+    "CreateOrderRequest",
+    "ExchangeRateRequest",
+    "JSONScalar",
+    "OrderField",
+    "OrderReference",
+    "PayOrderRequest",
+    "RequestModel",
+    "SteamUserRequest",
+    "TokenRequest",
 ]

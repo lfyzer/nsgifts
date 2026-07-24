@@ -1,34 +1,55 @@
-"""Order API request models."""
+"""Order request models for the unified API v2 flow."""
 
-from typing import Optional
+import re
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import UUID4, Field, SecretStr, field_validator
 
-
-class CreateOrder(BaseModel):
-    """Order creation request.
-    
-    Simple model for creating orders. Just specify what you want and how 
-    much.
-    
-    Attributes:
-        service_id (int): Which service to order from the catalog.
-        quantity (float): How much you want (depends on service type).
-        custom_id (str): Your own ID for tracking this order.
-        data (Optional[str]): Extra info like Steam username if needed.
-    """
-    
-    service_id: int = Field(..., gt=0)
-    quantity: float = Field(..., gt=0)
-    custom_id: str = Field(..., min_length=1, max_length=255)
-    data: Optional[str] = Field(None, max_length=1000)
+from .base import JSONScalar, RequestModel
 
 
-class PayOrder(BaseModel):
-    """Payment request.
-    
-    Attributes:
-        custom_id (str): Order ID to pay for.
-    """
-    
-    custom_id: str = Field(..., min_length=1, max_length=255)
+class OrderField(RequestModel):
+    """One dynamic field required by a stock category."""
+
+    key: str = Field(min_length=1, max_length=255)
+    value: JSONScalar
+
+
+class OrderReference(RequestModel):
+    """Strict UUID4 reference to a partner order."""
+
+    custom_id: UUID4
+
+
+class CreateOrderRequest(OrderReference):
+    """Unified order-creation request."""
+
+    service_id: int = Field(gt=0)
+    fields: list[OrderField] = Field(min_length=1)
+
+
+class PayOrderRequest(OrderReference):
+    """Order-payment request with optional purchase TOTP."""
+
+    totp_code: SecretStr | None = None
+
+    @field_validator("totp_code")
+    @classmethod
+    def validate_totp(
+        cls,
+        value: SecretStr | None,
+    ) -> SecretStr | None:
+        """Require exactly six decimal digits when TOTP is present."""
+        if value is not None and not re.fullmatch(
+            r"\d{6}",
+            value.get_secret_value(),
+        ):
+            raise ValueError("totp_code must contain six digits")
+        return value
+
+    def to_payload(self) -> dict[str, Any]:
+        """Serialize the real TOTP only at the wire boundary."""
+        data = super().to_payload()
+        if self.totp_code is not None:
+            data["totp_code"] = self.totp_code.get_secret_value()
+        return data

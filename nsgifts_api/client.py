@@ -1,465 +1,202 @@
+"""Public asynchronous client facade for NS.Gifts API v2."""
+
 import asyncio
 import logging
-import time
-import re
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
-import aiohttp
-from aiohttp import ClientResponseError, ClientTimeout
-from aiohttp.client_exceptions import (
-    ClientConnectorError,
-    ServerTimeoutError,
-)
-
+from .auth import HMACSigner, TokenState
 from .config import ClientConfig
-from .enums import (
-    ContentType,
-    AuthHeader,
-    HTTPRequestType,
-    UserEndpoint,
-    ServicesEndpoint,
-    OrdersEndpoint,
-    SteamEndpoint,
-    IPWhitelistEndpoint
-)
-from .errors import (
-    APIError,
-    APIAuthenticationError,
-    APIServerError,
-    APITimeoutError,
-    APIConnectionError,
-    from_http_status,
-)
+from .enums import APIOperation
+from .errors import APIAuthenticationError, APIError
 from .methods import (
-    IPWhitelistMethods,
+    AccountMethods,
+    CatalogMethods,
     OrderMethods,
-    ServicesMethods,
     SteamMethods,
-    UserMethods,
 )
+from .models import TokenRequest, TokenResponse
+from .transport import SignedTransport
 
 _logger = logging.getLogger(__name__)
+_logger.addHandler(logging.NullHandler())
+
+
+class _LibraryStreamHandler(logging.StreamHandler):
+    """Marker handler that prevents duplicate library log output."""
 
 
 class NSGiftsClient:
-    """Client for interacting with the NS Gifts API.
+    """Secure asynchronous client for NS.Gifts API v2.
 
-    This client handles authentication, token management, and API requests to
-    the NS Gifts service. It supports automatic token refresh, retry logic for
-    transient errors, and server error detection with a cooldown.
-
-    The client is organized into functional methods:
-        - user: User authentication and profile operations
-        - services: Service listings and categories
-        - orders: Order creation and management
-        - steam: Steam-specific operations
-        - ip_whitelist: IP whitelist management
-
-    Attributes:
-        base_url (str): The base URL for the API.
-        max_retries (int): Maximum number of retry attempts for failed requests.
-        request_timeout (int): Timeout in seconds for API requests.
-        server_error_cooldown (int): Cooldown in seconds after detecting a
-            server error.
-        token_refresh_buffer (int): Time buffer in seconds before token expiry
-            to trigger refresh.
-        token (Optional[str]): The current JWT token.
-        token_expiry (int): Unix timestamp when the token expires.
-        email (Optional[str]): User's email for authentication.
-        password (Optional[str]): User's password for authentication.
-        session (Optional[aiohttp.ClientSession]): The aiohttp ClientSession
-            for making requests.
-        user (UserMethods): User management methods.
-        services (ServicesMethods): Service and category methods.
-        orders (OrderMethods): Order management methods.
-        steam (SteamMethods): Steam-specific methods.
-        ip_whitelist (IPWhitelistMethods): IP whitelist methods.
+    The client lazily authenticates before the first protected request,
+    refreshes the two-hour session token under a lock, and exposes
+    domain-specific method groups.
     """
 
     def __init__(
         self,
-        config: Optional[ClientConfig] = None,
-        base_url: Optional[str] = None,
-        max_retries: Optional[int] = None,
-        request_timeout: Optional[int] = None,
-        server_error_cooldown: Optional[int] = None,
-        token_refresh_buffer: Optional[int] = None,
-    ):
-        """Initializes the NSGiftsClient.
-        
-        You can provide either a ClientConfig object for full configuration
-        control, or individual parameters for backward compatibility.
-        
+        config: ClientConfig | None = None,
+        *,
+        transport: Any | None = None,
+    ) -> None:
+        """Initialize the client from explicit or environment settings.
+
         Args:
-            config: ClientConfig instance with all settings. If provided,
-                individual parameters will override config values.
-            base_url: The base URL for the API. Overrides config.base_url.
-            max_retries: Maximum retry attempts. Overrides config.max_retries.
-            request_timeout: Request timeout in seconds. Overrides
-                config.request_timeout.
-            server_error_cooldown: Cooldown after server error. Overrides
-                config.server_error_cooldown.
-            token_refresh_buffer: Buffer before token expiry for refresh.
-                Overrides config.token_refresh_buffer.
+            config: Validated client settings. When omitted, settings are
+                loaded from ``NSGIFTS_*`` environment variables.
+            transport: Optional injected transport for tests or advanced
+                integrations.
         """
-        if config is None:
-            config = ClientConfig()
-        
-        self._config = config
-        self.base_url = base_url or config.base_url
-        self._max_retries = (
-            max_retries if max_retries is not None else config.max_retries
-        )
-        self._request_timeout = (
-            request_timeout if request_timeout is not None
-            else config.request_timeout
-        )
-        self._server_error_cooldown = (
-            server_error_cooldown if server_error_cooldown is not None
-            else config.server_error_cooldown
-        )
-        self._token_refresh_buffer = (
-            token_refresh_buffer if token_refresh_buffer is not None
-            else config.token_refresh_buffer
-        )
-        
-        if config.enable_logging:
-            logging.basicConfig(
-                level=getattr(logging, config.log_level.upper()),
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            )
-        
-        self.token: Optional[str] = None
-        self.token_expiry: int = 0
-        self.email: Optional[str] = config.email
-        self.password: Optional[str] = config.password
-        self.session: Optional[aiohttp.ClientSession] = None
+        self._config = config or ClientConfig.from_env()
+        self._configure_logging()
+        self._token_state: TokenState | None = None
+        self._auth_response: TokenResponse | None = None
         self._token_lock = asyncio.Lock()
-        self._session_lock = asyncio.Lock()
-        self._server_error_detected = False
-        self._server_error_timestamp = 0
-        self._auto_authenticated = False
+        self._closed = False
 
-        self.user = UserMethods(self)
-        self.services = ServicesMethods(self)
-        self.orders = OrderMethods(self)
-        self.steam = SteamMethods(self)
-        self.ip_whitelist = IPWhitelistMethods(self)
-
-    @staticmethod
-    def _sanitize_input(value: str, max_length: int = 1000) -> str:
-        """Sanitizes string input by removing dangerous characters.
-        
-        Args:
-            value (str): Input string to sanitize.
-            max_length (int): Maximum allowed length.
-            
-        Returns:
-            str: Sanitized string.
-            
-        Raises:
-            ValueError: If input is invalid or too long.
-        """
-        if not isinstance(value, str):
-            raise ValueError("Input must be a string")
-        
-        sanitized = re.sub(r'[<>"\']', '', value.strip())
-        
-        if len(sanitized) > max_length:
-            raise ValueError(
-                f"Input too long. Maximum {max_length} characters allowed"
+        if transport is None:
+            signer = HMACSigner(self._config.api_secret)
+            self._transport = SignedTransport(
+                config=self._config,
+                signer=signer,
+                token_provider=self._provide_token,
             )
-        
-        if not sanitized:
-            raise ValueError("Input cannot be empty after sanitization")
-        
-        return sanitized
+        else:
+            self._transport = transport
 
-    async def __aenter__(self):
-        """Enters the async context manager.
-        
-        Automatically authenticates if credentials are provided in config
-        and auto_auth is enabled.
-        """
-        await self._ensure_session()
-        
-        if (
-            self._config.auto_auth 
-            and self.email 
-            and self.password 
-            and not self._auto_authenticated
+        self.account = AccountMethods(self._transport)
+        self.catalog = CatalogMethods(self._transport)
+        self.orders = OrderMethods(self._transport)
+        self.steam = SteamMethods(self._transport)
+
+    def _configure_logging(self) -> None:
+        """Configure only the library logger without duplicate handlers."""
+        if not self._config.enable_logging:
+            return
+        _logger.setLevel(self._config.log_level)
+        if any(
+            isinstance(handler, _LibraryStreamHandler)
+            for handler in _logger.handlers
         ):
-            try:
-                await self.user.login(self.email, self.password)
-                self._auto_authenticated = True
-                _logger.info("Auto-authentication successful")
-            except Exception as e:
-                _logger.error(f"Auto-authentication failed: {e}")
-                raise APIAuthenticationError(
-                    f"Auto-authentication failed: {e}"
-                ) from e
-        
+            return
+        handler = _LibraryStreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
+        )
+        _logger.addHandler(handler)
+
+    def _ensure_open(self) -> None:
+        """Reject reuse after client shutdown."""
+        if self._closed:
+            raise APIError("NSGiftsClient is closed")
+
+    async def authenticate(
+        self,
+        *,
+        force: bool = False,
+    ) -> TokenResponse:
+        """Create or refresh the short-lived session token.
+
+        Args:
+            force: Request a new token even when the current token is valid.
+
+        Returns:
+            The masked token response and its relative expiry.
+        """
+        self._ensure_open()
+        if (
+            not force
+            and self._token_state is not None
+            and self._auth_response is not None
+            and not self._token_state.is_expiring(
+                self._config.token_refresh_buffer
+            )
+        ):
+            return self._auth_response
+
+        async with self._token_lock:
+            if (
+                not force
+                and self._token_state is not None
+                and self._auth_response is not None
+                and not self._token_state.is_expiring(
+                    self._config.token_refresh_buffer
+                )
+            ):
+                return self._auth_response
+
+            return await self._request_token()
+
+    async def _request_token(self) -> TokenResponse:
+        """Request and store one token while the token lock is held."""
+        request = TokenRequest(
+            login=self._config.login,
+            password=self._config.password,
+        )
+        data = await self._transport.request(
+            APIOperation.GET_TOKEN,
+            json_body=request.to_payload(),
+        )
+        response = TokenResponse.model_validate(data)
+        if response.user_id != self._config.user_id:
+            raise APIAuthenticationError(
+                "Token response user_id does not match configuration"
+            )
+        token = response.token.get_secret_value()
+        self._token_state = TokenState.issue(
+            token=token,
+            expires_in=response.expires_in,
+        )
+        self._auth_response = response
+        _logger.info("Session token refreshed")
+        return response
+
+    async def _provide_token(
+        self,
+        force_refresh: bool,
+        rejected_token: str | None = None,
+    ) -> str:
+        """Provide a valid token to the signed transport."""
+        if not force_refresh or rejected_token is None:
+            response = await self.authenticate(force=force_refresh)
+            return response.token.get_secret_value()
+
+        self._ensure_open()
+        observed_state = self._token_state
+        async with self._token_lock:
+            if (
+                self._token_state is not None
+                and self._auth_response is not None
+                and (
+                    self._token_state is not observed_state
+                    or self._token_state.value != rejected_token
+                )
+            ):
+                return self._token_state.value
+            response = await self._request_token()
+        return response.token.get_secret_value()
+
+    async def close(self) -> None:
+        """Close network resources exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        self._token_state = None
+        self._auth_response = None
+        await self._transport.close()
+
+    async def __aenter__(self) -> "NSGiftsClient":
+        """Enter the asynchronous client context."""
+        self._ensure_open()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exits the async context manager, closing the session."""
-        await self.close()
-
-    async def close(self):
-        """Closes the aiohttp session."""
-        if self.session and not self.session.closed:
-            await self.session.close()
-            self.session = None
-
-    def _get_headers(self) -> Dict[str, str]:
-        """Gets the HTTP headers for API requests.
-
-        Returns:
-            Dict[str, str]: Dictionary of headers, including Authorization
-                if token is set.
-        """
-        headers = {"Content-Type": ContentType.JSON.value}
-        if self.token:
-            headers["Authorization"] = f"{AuthHeader.BEARER.value} {self.token}"
-        return headers
-
-    async def _ensure_session(self):
-        """Ensures an active aiohttp session exists."""
-        if not self.session or self.session.closed:
-            async with self._session_lock:
-                if not self.session or self.session.closed:
-                    self.session = aiohttp.ClientSession(
-                        raise_for_status=True,
-                    )
-                    _logger.debug("Created new HTTP session")
-
-    async def _ensure_valid_token(self):
-        """Ensures the token is valid, refreshing if necessary.
-
-        Raises:
-            APIAuthenticationError: If refresh fails or credentials missing.
-        """
-        current_time = int(time.time())
-        if not self.token or (
-            self.token_expiry - current_time < self._token_refresh_buffer
-        ):
-            async with self._token_lock:
-                # Re-check inside the lock to prevent a race condition
-                current_time = int(time.time())
-                if not self.token or (
-                    self.token_expiry - current_time
-                    < self._token_refresh_buffer
-                ):
-                    if not self.email or not self.password:
-                        raise APIAuthenticationError(
-                            "Token expired, but credentials are not set "
-                            "for refresh. Call login() first."
-                        )
-                    await self.user.login(self.email, self.password)
-                    _logger.info("Token refreshed successfully")
-
-    async def _request_with_retries(
+    async def __aexit__(
         self,
-        method: str,
-        endpoint: str,
-        json_data: Optional[Dict] = None,
-        is_auth_request: bool = False,
-    ) -> Dict[str, Any]:
-        """Performs a request with retry and error handling logic.
-
-        This is a centralized method to handle common request patterns.
-        It handles connection errors, timeouts, and server errors with a
-        backoff strategy.
-
-        Args:
-            method (str): HTTP method (e.g., 'POST').
-            endpoint (str): API endpoint path.
-            json_data (Optional[Dict]): Optional JSON payload.
-            is_auth_request (bool): True if this is an authentication request.
-
-        Returns:
-            Dict[str, Any]: Response JSON as a dictionary.
-
-        Raises:
-            APIConnectionError: If connection fails.
-            APITimeoutError: If timeout.
-            APIServerError: If server error.
-            APIAuthenticationError: If login fails.
-            APIClientError: If client error occurs (4xx responses).
-        """
-        # Ensure endpoint is a string value, not enum
-        endpoint_value = (
-            endpoint.value if hasattr(endpoint, 'value') else endpoint
-        )
-        url = f"{self.base_url}{endpoint_value}"
-        last_error = None
-        await self._ensure_session()
-
-        for attempt in range(self._max_retries):
-            if (
-                self._server_error_detected
-                and not self._is_cooldown_expired()
-                and not is_auth_request
-            ):
-                cooldown_remaining = (
-                    self._server_error_timestamp
-                    + self._server_error_cooldown
-                    - int(time.time())
-                )
-                raise APIServerError(
-                    f"API server error detected. Avoiding requests for "
-                    f"{cooldown_remaining} more seconds."
-                )
-
-            try:
-                async with self.session.request(
-                    method,
-                    url,
-                    json=json_data,
-                    headers=self._get_headers(),
-                    timeout=ClientTimeout(total=self._request_timeout),
-                ) as response:
-                    result = await response.json()
-
-                    # Handle token response for both login and signup
-                    if (endpoint_value.endswith("/get_token")
-                            or endpoint_value.endswith("/signup")):
-                        if "access_token" in result:
-                            self.token = result["access_token"]
-                            if "valid_thru" in result:
-                                self.token_expiry = result["valid_thru"]
-                            else:
-                                # Default to 1.5 hours if no expiry provided
-                                self.token_expiry = int(time.time()) + 5400
-
-                    return result
-
-            except ClientResponseError as e:
-                last_error = e
-                if 400 <= e.status < 500:
-                    if e.status == 401 and not is_auth_request:
-                        _logger.warning(
-                            "Received 401 Unauthorized. Attempting token "
-                            "refresh..."
-                        )
-                        try:
-                            await self._ensure_valid_token()
-                            continue
-                        except APIAuthenticationError:
-                            raise APIAuthenticationError(
-                                "Authentication failed after token refresh."
-                            ) from e
-                    else:  # 400-499 other than 401
-                        try:
-                            response_data = await e.response.json()
-                        except Exception:
-                            response_data = {"detail": str(e)}
-                        
-                        error = from_http_status(
-                            e.status,
-                            response_data=response_data
-                        )
-                        _logger.error(
-                            f"Client error at {url}: {error}"
-                        )
-                        raise error from e
-                else:  # 500+
-                    self._server_error_detected = True
-                    self._server_error_timestamp = int(time.time())
-                    
-                    try:
-                        response_data = await e.response.json()
-                    except Exception:
-                        response_data = {"detail": str(e)}
-                    
-                    error = from_http_status(
-                        e.status,
-                        response_data=response_data
-                    )
-                    _logger.error(
-                        f"Server error at {url}: {error}"
-                    )
-                    raise error from e
-            except (ClientConnectorError, ServerTimeoutError) as e:
-                last_error = e
-                error_type = (
-                    "Connection error"
-                    if isinstance(e, ClientConnectorError)
-                    else "Request timeout"
-                )
-                _logger.warning(
-                    f"{error_type} on attempt {attempt + 1}/"
-                    f"{self._max_retries} for {url}: {e}"
-                )
-
-                if attempt < self._max_retries - 1:
-                    wait_time = 1 * (2**attempt)
-                    await asyncio.sleep(wait_time)
-                else:
-                    ErrorClass = (
-                        APIConnectionError
-                        if isinstance(e, ClientConnectorError)
-                        else APITimeoutError
-                    )
-                    raise ErrorClass(
-                        f"{error_type} after {self._max_retries} attempts."
-                    ) from last_error
-
-        raise APIError("Request failed after all retries.") from last_error
-
-    def _is_cooldown_expired(self) -> bool:
-        """Checks if the server error cooldown has expired."""
-        current_time = int(time.time())
-        return (
-            self._server_error_timestamp + self._server_error_cooldown
-        ) <= current_time
-
-    def is_server_error_detected(self) -> bool:
-        """Checks if a server error is currently detected.
-
-        Returns:
-            True if server error detected and cooldown active, else False.
-        """
-        if self._server_error_detected and self._is_cooldown_expired():
-            self._server_error_detected = False
-        return self._server_error_detected
-
-    def reset_server_error_state(self) -> None:
-        """Resets the server error detection state."""
-        self._server_error_detected = False
-        self._server_error_timestamp = 0
-        _logger.info("Server error state has been manually reset")
-
-    async def _make_authenticated_request(
-        self, 
-        method: Union[str, HTTPRequestType], 
-        endpoint: Union[
-            str,
-            UserEndpoint,
-            ServicesEndpoint,
-            OrdersEndpoint,
-            SteamEndpoint,
-            IPWhitelistEndpoint
-        ],
-        json_data: Optional[Dict] = None
-    ) -> Dict[str, Any]:
-        """Makes an authenticated request, ensuring a valid token exists.
-
-        Args:
-            method (str): HTTP method (e.g., 'POST').
-            endpoint (str): API endpoint path.
-            json_data (Optional[Dict]): Optional JSON payload.
-
-        Returns:
-            Response JSON as a dictionary.
-
-        Raises:
-            APIAuthenticationError: If not authenticated or login failed.
-            APIError: For other client or server errors.
-        """
-        if not self.token and not (self.email and self.password):
-            raise APIAuthenticationError(
-                "Authentication required. Call login() or signup() first."
-            )
-        await self._ensure_valid_token()
-        return await self._request_with_retries(method, endpoint, json_data)
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: Any,
+    ) -> None:
+        """Close the client when leaving its context."""
+        await self.close()

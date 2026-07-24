@@ -1,67 +1,45 @@
-"""Steam API response models."""
+"""Steam response models for API v2."""
 
-from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
 
+from pydantic import Field
 
-class SteamAmountResponse(BaseModel):
-    """Steam amount calculation response.
-    
-    Attributes:
-        exchange_rate (float): USD/RUB exchange rate.
-        usd_price (float): Price in USD.
-    """
-    
-    exchange_rate: float
-    usd_price: float
+from .base import ResponseModel
 
 
-class SteamCurrencyRateResponse(BaseModel):
-    """Steam currency rate response.
-    
-    Attributes:
-        date (str): Date of the rate.
-        rub_usd (str): RUB to USD exchange rate.
-        kzt_usd (str): KZT to USD exchange rate.
-        uah_usd (str): UAH to USD exchange rate.
-    """
-    
-    model_config = ConfigDict(populate_by_name=True)
-    
-    date: str
-    rub_usd: str = Field(alias="rub/usd")
-    kzt_usd: str = Field(alias="kzt/usd")
-    uah_usd: str = Field(alias="uah/usd")
+class ExchangeRates(ResponseModel):
+    """Currency units required for one USD."""
+
+    rub: Decimal
+    kzt: Decimal
+    uah: Decimal
 
 
-class SteamGiftCalculateResponse(BaseModel):
-    """Steam gift calculation response.
-    
-    Attributes:
-        sub_id (int): Steam package ID.
-        region (str): Region code.
-        price (float): Calculated price in USDT.
-    """
-    
-    sub_id: int
-    region: str
-    price: float
+class ExchangeRateResponse(ResponseModel):
+    """Exchange rates for a service."""
 
-
-class SteamGiftOrderResponse(BaseModel):
-    """Steam gift order response.
-    
-    Attributes:
-        custom_id (str): Custom order ID.
-        status (int): Order status code.
-        service_id (int): Service ID.
-        quantity (int): Quantity ordered.
-        total (float): Total price.
-        date (str): Order date.
-    """
-    
-    custom_id: str
-    status: int
     service_id: int
-    quantity: int
-    total: float
-    date: str
+    date: datetime
+    rates: ExchangeRates
+
+
+class SteamApp(ResponseModel):
+    """One Steam application and its dynamic package data."""
+
+    app_id: int
+    name: str
+    data_json: dict[str, Any]
+
+
+class SteamAppsResponse(ResponseModel):
+    """Steam applications available for gifts."""
+
+    apps: list[SteamApp]
+
+
+class SteamUserResponse(ResponseModel):
+    """Steam account validation result."""
+
+    account_status: bool = Field(alias="accountStatus")

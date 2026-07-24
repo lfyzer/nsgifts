@@ -37,16 +37,20 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
-.cache
+.cache/
 nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
+.uv-cache/
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -79,3 +83,16 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Agent and assistant metadata
+.agents/
+.codex/
+.codex-plugin/
+.superpowers/
+**/.agents/
+**/.codex/
+**/.codex-plugin/
+**/.superpowers/
+
+# Local Git worktrees
+.worktrees/
