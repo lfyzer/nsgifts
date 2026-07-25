@@ -46,7 +46,7 @@ Install the tagged source directly:
 
 ```bash
 python -m pip install \
-  "git+https://github.com/lfyzer/nsgifts.git@v2.0.0"
+  "git+https://github.com/MrZerlif/nsgifts.git@v2.0.0"
 ```
 
 ### Environment
@@ -337,7 +337,7 @@ python -m pip install nsgifts_api-2.0.0-py3-none-any.whl
 
 ```bash
 python -m pip install \
-  "git+https://github.com/lfyzer/nsgifts.git@v2.0.0"
+  "git+https://github.com/MrZerlif/nsgifts.git@v2.0.0"
 ```
 
 ### Настройка `.env`
